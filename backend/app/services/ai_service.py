@@ -1,13 +1,14 @@
 """
 Optional Google Gemini integration (lazy-loaded).
 
-The application runs without this package or API key; enable only when
-LAWYERAI_USE_LLM=1 and GEMINI_API_KEY are set.
+Used as a **fallback** for chat when the local knowledge base cannot answer,
+and only when LAWYERAI_USE_LLM is enabled with a valid GEMINI_API_KEY.
 """
 
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -15,14 +16,35 @@ load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-_client = None
+# Soft timeout guidance for callers; SDK calls may still raise.
+REQUEST_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "25"))
+
+_client: Any = None
+
+
+class GeminiError(Exception):
+    """Raised when Gemini cannot produce a usable response."""
+
+
+def reload_settings_from_env() -> None:
+    """Refresh module settings (used by tests)."""
+    global API_KEY, MODEL, REQUEST_TIMEOUT_SECONDS, _client
+    API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+    MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    REQUEST_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "25"))
+    _client = None
 
 
 def is_configured() -> bool:
-    return bool(API_KEY) and API_KEY != "your_actual_gemini_api_key"
+    return bool(API_KEY) and API_KEY not in {
+        "your_actual_gemini_api_key",
+        "changeme",
+        "xxx",
+    }
 
 
 def use_llm_for_responses() -> bool:
+    """When true, Gemini may be used as chat fallback (not as primary local engine)."""
     return os.getenv("LAWYERAI_USE_LLM", "").strip().lower() in {
         "1",
         "true",
@@ -31,25 +53,100 @@ def use_llm_for_responses() -> bool:
     }
 
 
-def generate_text(prompt: str) -> str:
+def fallback_enabled() -> bool:
+    return use_llm_for_responses() and is_configured()
+
+
+def _build_client():
     global _client
-
-    if not is_configured():
-        raise RuntimeError("Gemini is not configured.")
-
     try:
         from google import genai
     except ImportError as exc:
-        raise RuntimeError(
-            "google-genai is not installed. Add it to your environment to use LLM mode."
+        raise GeminiError(
+            "google-genai is not installed. Run: pip install google-genai"
         ) from exc
 
     if _client is None:
         _client = genai.Client(api_key=API_KEY)
+    return _client
 
-    response = _client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
+
+def generate_text(prompt: str) -> str:
+    """
+    Call Gemini. Raises GeminiError on configuration/API/empty failures.
+    Does not invent a fake success response.
+    """
+    if not is_configured():
+        raise GeminiError("Gemini is not configured (missing GEMINI_API_KEY).")
+
+    try:
+        client = _build_client()
+        # google-genai client; http_options timeout support varies by version.
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt,
+                config={"http_options": {"timeout": int(REQUEST_TIMEOUT_SECONDS * 1000)}},
+            )
+        except TypeError:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt,
+            )
+    except GeminiError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — surface SDK/network failures
+        name = type(exc).__name__
+        message = str(exc).lower()
+        if "resource_exhausted" in message or "429" in message or "quota" in message:
+            raise GeminiError("Gemini rate limit or quota exceeded.") from exc
+        if "timeout" in message or "timed out" in message:
+            raise GeminiError("Gemini request timed out.") from exc
+        if "401" in message or "403" in message or "permission" in message:
+            raise GeminiError("Gemini rejected the API key or permissions.") from exc
+        raise GeminiError(f"Gemini API error ({name}).") from exc
+
+    text = getattr(response, "text", None)
+    if text is None and hasattr(response, "candidates"):
+        # Best-effort extract if .text is empty but candidates exist.
+        try:
+            text = response.text
+        except Exception:  # noqa: BLE001
+            text = None
+
+    if not text or not str(text).strip():
+        raise GeminiError("Gemini returned an empty response.")
+
+    return str(text).strip()
+
+
+GEMINI_CHAT_SYSTEM = """
+You are LawyerAI's optional fallback assistant for general Indian legal information.
+You are NOT a lawyer and must NOT present answers as verified legal advice.
+
+Rules:
+- Prefer general process explanations over specific statute section numbers.
+- If you are not confident, say so clearly.
+- Never invent case names, citations, or official URLs.
+- Recommend checking https://www.indiacode.nic.in/ and consulting a qualified advocate.
+- Keep the answer concise and practical.
+"""
+
+
+def build_legal_fallback_prompt(message: str, history: str) -> str:
+    return (
+        f"{GEMINI_CHAT_SYSTEM.strip()}\n\n"
+        f"Conversation (recent):\n{history or '(none)'}\n\n"
+        f"User question:\n{message}\n\n"
+        "Answer helpfully within the rules above."
     )
 
-    return response.text or "The AI returned an empty response."
+
+def format_gemini_reply(raw: str) -> str:
+    return (
+        f"{raw.strip()}\n\n"
+        "---\n"
+        "*This reply was generated by an optional AI fallback (Gemini). "
+        "It is **not** verified curated legal content from LawyerAI's knowledge base "
+        "and is **not** legal advice. Confirm with official sources or a qualified advocate.*"
+    )

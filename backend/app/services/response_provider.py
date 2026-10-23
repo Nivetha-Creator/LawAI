@@ -1,8 +1,10 @@
 """
 Single entry point for assistant text generation.
 
-Default: local engines (legal + debate services).
-Optional: cloud LLM when explicitly enabled and configured (future-friendly).
+Chat: local knowledge base first; optional Gemini only when the local engine
+returns unknown AND LAWYERAI_USE_LLM + GEMINI_API_KEY are set.
+
+Debate: always local (rule-based) in Phase 1.
 """
 
 from __future__ import annotations
@@ -11,32 +13,57 @@ from typing import Any
 
 from app.services import ai_service
 from app.services.debate_service import generate_debate_feedback, generate_debate_reply
-from app.services.legal_service import answer_legal_question
+from app.services.legal_service import resolve_legal_question
 
 
 def llm_enabled() -> bool:
-    return ai_service.is_configured() and ai_service.use_llm_for_responses()
+    """True when Gemini fallback is allowed (key + flag)."""
+    return ai_service.fallback_enabled()
 
 
-def generate_chat_reply(message: str, transcript: list[dict[str, Any]]) -> str:
-    if llm_enabled():
-        history = "\n".join(
-            f'{m["role"].upper()}: {m["content"]}'
-            for m in transcript[-12:]
+def generate_chat_reply(
+    message: str,
+    transcript: list[dict[str, Any]],
+) -> tuple[str, str]:
+    """
+    Returns (reply_text, engine) where engine is ``local`` or ``gemini``.
+    """
+    recent_user = [m["content"] for m in transcript if m.get("role") == "user"]
+    local = resolve_legal_question(message, recent_user_messages=recent_user[:-1])
+
+    if local.status in {"matched", "clarify"}:
+        return local.text, "local"
+
+    # Local unknown → optional Gemini fallback.
+    if not ai_service.fallback_enabled():
+        return local.text, "local"
+
+    history = "\n".join(
+        f'{m["role"].upper()}: {m["content"]}' for m in transcript[-12:]
+    )
+    prompt = ai_service.build_legal_fallback_prompt(message, history)
+
+    try:
+        raw = ai_service.generate_text(prompt)
+        return ai_service.format_gemini_reply(raw), "gemini"
+    except ai_service.GeminiError as exc:
+        fallback = (
+            f"{local.text}\n\n"
+            "**Optional AI fallback unavailable**\n"
+            f"{exc}\n\n"
+            "LawyerAI is still running on the local knowledge base. "
+            "Rephrase with keywords such as road accident, hit and run, "
+            "insurance claim, FIR, or bail—or consult a qualified advocate."
         )
-        prompt = (
-            "You are LawyerAI, an Indian legal information assistant. "
-            "Do not invent statutes or citations.\n\n"
-            f"Conversation:\n{history}\n\nAnswer the latest user message."
+        return fallback, "local"
+    except Exception:  # noqa: BLE001
+        fallback = (
+            f"{local.text}\n\n"
+            "**Optional AI fallback unavailable**\n"
+            "The AI service failed unexpectedly. "
+            "Use the local suggestions above or consult a qualified advocate."
         )
-        return ai_service.generate_text(prompt)
-
-    recent_user = [
-        m["content"]
-        for m in transcript
-        if m.get("role") == "user"
-    ]
-    return answer_legal_question(message, recent_user_messages=recent_user[:-1])
+        return fallback, "local"
 
 
 def generate_debate_turn(
@@ -45,18 +72,6 @@ def generate_debate_turn(
     user_message: str,
     transcript: list[dict[str, Any]],
 ) -> str:
-    if llm_enabled():
-        opposing = "Defence" if user_side == "Prosecution" else "Prosecution"
-        history = "\n".join(
-            f'{m["role"].upper()}: {m["content"]}' for m in transcript[-12:]
-        )
-        prompt = (
-            f"Educational debate. User is {user_side}; you argue {opposing}. "
-            f"Topic: {topic}. Do not invent citations.\n\n{history}\n\n"
-            f"Respond as {opposing}."
-        )
-        return ai_service.generate_text(prompt)
-
     return generate_debate_reply(user_side, topic, user_message, transcript)
 
 
@@ -65,14 +80,4 @@ def generate_debate_review(
     user_side: str,
     topic: str,
 ) -> str:
-    if llm_enabled():
-        formatted = "\n".join(
-            f'{m["role"].upper()}: {m["content"]}' for m in transcript[-30:]
-        )
-        prompt = (
-            "Constructive debate coach. Score 1-10 on reasoning, evidence, clarity. "
-            "Educational only.\n\n" + formatted
-        )
-        return ai_service.generate_text(prompt)
-
     return generate_debate_feedback(transcript, user_side, topic)
