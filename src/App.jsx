@@ -15,11 +15,10 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_BASE =
-  (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(
-    /\/$/,
-    ""
-  );
+// Default: same-origin relative URLs so Vite can proxy to FastAPI.
+// Override with VITE_API_BASE_URL only when you intentionally call the API
+// on a different host (not needed for Cursor Cloud Agent or local Vite proxy).
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 const welcomeMessage = {
   role: "assistant",
