@@ -28,6 +28,8 @@ npm run dev
 
 Open the Vite URL and ensure the backend is running on port 8000.
 
+Optional: copy `.env.example` to `.env` and set `VITE_API_BASE_URL` if the API is not on `http://127.0.0.1:8000`.
+
 ### Tests (no network, no API key)
 
 ```bash
