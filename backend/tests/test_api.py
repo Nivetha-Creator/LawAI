@@ -16,8 +16,10 @@ def client(temp_db):
 def test_health_local_engine(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "healthy"
-    assert response.json()["response_engine"] == "local"
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["response_engine"] == "local"
+    assert body.get("gemini_fallback") is False
 
 
 def test_docs_available(client):
@@ -44,6 +46,18 @@ def test_supported_legal_chat(client):
     assert "curated knowledge base" in body["reply"]
     assert body["engine"] == "local"
     assert "will not guess" not in body["reply"].lower()
+
+
+def test_road_accident_chat_local(client):
+    chat = client.post(
+        "/chat",
+        json={"message": "What should I do after a road accident with vehicle damage?"},
+    )
+    assert chat.status_code == 200
+    body = chat.json()
+    assert body["engine"] == "local"
+    assert "curated knowledge base" in body["reply"]
+    assert "accident" in body["reply"].lower()
 
 
 def test_unsupported_legal_chat(client):

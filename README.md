@@ -143,14 +143,18 @@ Database file (created at runtime): `backend/lawyerai.db` (gitignored).
 
 ---
 
-## Optional Gemini LLM (not required)
+## Optional Gemini fallback (not required)
 
-Default = local engines only.
+Default = **local knowledge base only**. Gemini is never required.
+
+When enabled, Gemini is used **only if** the local knowledge base cannot answer an Ask Me Anything question. Debate stays local. AI replies are labelled as unverified fallback—not curated legal advice.
 
 1. `pip install google-genai`
-2. Copy `backend/.env.example` → `backend/.env`
+2. Copy `backend/.env.example` → `backend/.env` (never commit `.env`)
 3. Set `LAWYERAI_USE_LLM=1` and `GEMINI_API_KEY=...`
 4. Restart the backend
+
+Confirm `GET /health` shows `"gemini_fallback": true` only when both flag and key are set.
 
 ---
 

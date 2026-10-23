@@ -41,7 +41,7 @@ def chat(request: ChatRequest):
 
     transcript = database.get_conversation(conversation["id"])["messages"]
 
-    reply = generate_chat_reply(message, transcript)
+    reply, engine = generate_chat_reply(message, transcript)
 
     database.add_message(conversation["id"], "assistant", reply)
 
@@ -49,5 +49,5 @@ def chat(request: ChatRequest):
         "reply": reply,
         "conversation_id": conversation["id"],
         "title": conversation["title"],
-        "engine": "local",
+        "engine": engine,
     }

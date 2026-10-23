@@ -53,7 +53,9 @@ def home():
 def health():
     from app.services import ai_service
 
+    gemini_fallback = ai_service.fallback_enabled()
     return {
         "status": "healthy",
-        "response_engine": "llm" if ai_service.is_configured() and ai_service.use_llm_for_responses() else "local",
+        "response_engine": "local",
+        "gemini_fallback": gemini_fallback,
     }
