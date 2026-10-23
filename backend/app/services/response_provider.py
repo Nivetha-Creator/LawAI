@@ -14,6 +14,11 @@ from typing import Any
 from app.services import ai_service
 from app.services.debate_service import generate_debate_feedback, generate_debate_reply
 from app.services.legal_service import resolve_legal_question
+from app.services.strategy_service import (
+    analyze_legal_strategy,
+    build_strategy_enrichment_prompt,
+    format_strategy_enrichment,
+)
 
 
 def llm_enabled() -> bool:
@@ -81,3 +86,47 @@ def generate_debate_review(
     topic: str,
 ) -> str:
     return generate_debate_feedback(transcript, user_side, topic)
+
+
+def generate_strategy_reply(
+    message: str,
+    transcript: list[dict[str, Any]],
+) -> tuple[str, str]:
+    """
+    Legal Strategy Analysis. Local-first structured report.
+    Optional Gemini only enriches when local law section has no curated match
+    and fallback is enabled — never used to invent facts when clarifying.
+    """
+    recent_user = [m["content"] for m in transcript if m.get("role") == "user"]
+    result = analyze_legal_strategy(message, recent_user_messages=recent_user[:-1])
+
+    if result.status in {"clarify", "refused_illegal"}:
+        return result.text, "local"
+
+    text = result.text
+    engine = "local"
+
+    if result.needs_unverified_enrichment and ai_service.fallback_enabled():
+        prompt = build_strategy_enrichment_prompt(message, result.text)
+        try:
+            raw = ai_service.generate_text(prompt)
+            text = result.text + format_strategy_enrichment(raw)
+            engine = "gemini"
+        except ai_service.GeminiError as exc:
+            text = (
+                f"{result.text}\n\n"
+                "**Optional AI enrichment unavailable**\n"
+                f"{exc}\n"
+                "The local strategy analysis above remains available."
+            )
+            engine = "local"
+        except Exception:  # noqa: BLE001
+            text = (
+                f"{result.text}\n\n"
+                "**Optional AI enrichment unavailable**\n"
+                "The AI service failed unexpectedly. Use the local analysis above."
+            )
+            engine = "local"
+
+    return text, engine
+

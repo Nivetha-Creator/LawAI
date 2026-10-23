@@ -16,8 +16,23 @@ Indian legal information and educational debate assistant.
 ## Features
 
 - **Ask Me Anything** — local topic matching (`backend/app/knowledge/topics.py`)
+- **Legal Strategy** — lawful defences, evidence gaps, procedure, and next steps (`POST /strategy`)
 - **Argue a Case** — local opposing-counsel simulation + rule-based feedback
 - **Chat history** — SQLite create / list / open / rename / delete
+
+### Legal Strategy Analysis (safe usage)
+
+Use the **Legal Strategy** tab when you want a structured review of a situation.
+
+1. Provide jurisdiction, approximate dates, allegations, procedural stage, and available evidence.
+2. LawyerAI asks clarifying questions if essentials are missing — it does **not** invent facts.
+3. A complete analysis includes: case summary, relevant law (curated KB only when matched), lawful defences, evidence gaps, procedural issues, opposing arguments, strengths/risks, and practical next steps.
+4. “Loopholes” means **lawful** arguments and evidentiary/procedural weaknesses — never illegal tactics.
+5. Illegal requests (fabricating evidence, bribery, etc.) are refused with lawful alternatives.
+6. Optional Gemini (same `LAWYERAI_USE_LLM` + `GEMINI_API_KEY` as chat) may add an **unverified** note only when no curated law topic matched; it is labelled clearly and is not treated as verified law.
+7. Do not paste unnecessary IDs or confidential case files into the chat.
+
+**Limitations:** educational guidance only; not a prediction of winning; may not cover every area of Indian law; always verify on [India Code](https://www.indiacode.nic.in/) and with a qualified advocate.
 
 ---
 
@@ -70,7 +85,7 @@ npm run dev
 
 Open the URL Vite prints (usually http://localhost:5173), or the **Cursor Cloud Agent forwarded URL for port 5173**.
 
-**API connection (important for Cloud Agents):** leave `VITE_API_BASE_URL` unset. The browser calls same-origin paths (`/chat`, `/debate`, `/conversations`, `/health`). Vite proxies those to FastAPI at `127.0.0.1:8000` inside the VM. You do **not** need to forward port 8000 or open a Ports tab for the backend.
+**API connection (important for Cloud Agents):** leave `VITE_API_BASE_URL` unset. The browser calls same-origin paths (`/chat`, `/strategy`, `/debate`, `/conversations`, `/health`). Vite proxies those to FastAPI at `127.0.0.1:8000` inside the VM. You do **not** need to forward port 8000 or open a Ports tab for the backend.
 
 Only set `VITE_API_BASE_URL` if you intentionally bypass the Vite proxy.
 
@@ -121,10 +136,11 @@ npm run lint -- src
 2. Open http://127.0.0.1:8000/docs and confirm `/chat`, `/debate`, `/conversations`.
 3. In the UI, ask: `Explain the difference between BNS and IPC.` → curated knowledge answer.
 4. Ask something obscure outside the knowledge base → “do not have curated information”.
-5. **Argue a Case**: choose Defence, enter a topic, send your own opening argument → opposing counsel replies referencing your point.
-6. Click **End debate & request feedback** → rule-based report; reopen the thread → debate stays ended.
-7. Rename and delete a conversation from the sidebar.
-8. Resize the window / use DevTools device mode for mobile sidebar open/close.
+5. **Legal Strategy**: paste a detailed situation (place, date, stage, evidence) → eight-section analysis; try a thin prompt → clarifying questions; try an illegal tactic → refusal.
+6. **Argue a Case**: choose Defence, enter a topic, send your own opening argument → opposing counsel replies referencing your point.
+7. Click **End debate & request feedback** → rule-based report; reopen the thread → debate stays ended.
+8. Rename and delete a conversation from the sidebar.
+9. Resize the window / use DevTools device mode for mobile sidebar open/close.
 
 ---
 

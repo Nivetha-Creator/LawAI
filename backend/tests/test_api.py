@@ -244,3 +244,48 @@ def test_cors_allows_local_vite_origins(client):
         )
         assert response.status_code in (200, 204)
         assert response.headers.get("access-control-allow-origin") == origin
+
+
+def test_strategy_endpoint_clarify_and_complete(client):
+    thin = client.post(
+        "/strategy",
+        json={"message": "I have a legal problem. Advise me."},
+    )
+    assert thin.status_code == 200
+    assert thin.json()["engine"] == "local"
+    assert thin.json()["mode"] == "strategy"
+    assert "more detail needed" in thin.json()["reply"].lower()
+
+    rich = (
+        "In Chennai, Tamil Nadu, India, on 12 March 2025 I had a road accident. "
+        "FIR registered; investigation pending. I have photos, medical bills, and "
+        "a witness. Other driver says I was speeding. Analyse strategy."
+    )
+    full = client.post("/strategy", json={"message": rich})
+    assert full.status_code == 200
+    body = full.json()
+    assert body["engine"] == "local"
+    assert "### 1. Case summary" in body["reply"]
+    assert body["conversation_id"]
+
+    detail = client.get(f"/conversations/{body['conversation_id']}")
+    assert detail.json()["mode"] == "strategy"
+    assert len(detail.json()["messages"]) >= 2
+
+
+def test_strategy_does_not_break_chat_or_debate(client):
+    chat = client.post("/chat", json={"message": "What is BNS compared to IPC?"})
+    assert chat.status_code == 200
+    assert chat.json()["engine"] == "local"
+    assert "curated knowledge base" in chat.json()["reply"]
+
+    debate = client.post(
+        "/debate",
+        json={
+            "message": "CCTV alone cannot prove intent beyond doubt.",
+            "side": "defence",
+            "topic": "CCTV evidence",
+        },
+    )
+    assert debate.status_code == 200
+    assert "Opposing counsel" in debate.json()["reply"]
