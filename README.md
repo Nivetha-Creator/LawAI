@@ -1,16 +1,55 @@
-# React + Vite
+# LawyerAI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Indian legal information and educational debate assistant. **Phase 2 runs fully offline** using a curated knowledge base and local debate rules—no API key required.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Frontend:** React + Vite (`npm run dev` → http://localhost:5173)
+- **Backend:** FastAPI + SQLite (`uvicorn` → http://127.0.0.1:8000)
 
-## React Compiler
+## Quick start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Backend
 
-## Expanding the Oxlint configuration
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### Frontend
+
+```bash
+npm install
+npm run dev
+```
+
+Open the Vite URL and ensure the backend is running on port 8000.
+
+### Tests (no network, no API key)
+
+```bash
+cd backend
+source .venv/bin/activate
+pytest -q
+```
+
+## Optional Gemini LLM
+
+By default, responses use the **local engine**. To enable Gemini (requires `google-genai` and an API key):
+
+1. `pip install google-genai`
+2. Copy `backend/.env.example` to `backend/.env`
+3. Set `LAWYERAI_USE_LLM=1` and `GEMINI_API_KEY=...`
+
+## Features
+
+- **Ask Me Anything** — topic matching against `backend/app/knowledge/topics.py`
+- **Argue a Case** — local opposing counsel simulation + rule-based debate feedback
+- **Chat history** — SQLite persistence (create, list, open, rename, delete)
+
+## Disclaimer
+
+LawyerAI provides general legal information for learning, not legal advice. Consult a qualified advocate for your situation.

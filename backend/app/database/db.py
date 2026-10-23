@@ -19,6 +19,20 @@ def connect():
     return connection
 
 
+def _migrate_conversations(conn):
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(conversations)").fetchall()
+    }
+    if "topic" not in columns:
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN topic TEXT NOT NULL DEFAULT ''"
+        )
+    if "ended" not in columns:
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN ended INTEGER NOT NULL DEFAULT 0"
+        )
+
+
 def init_db():
     with connect() as conn:
         conn.executescript("""
@@ -27,6 +41,8 @@ def init_db():
             title TEXT NOT NULL DEFAULT 'New conversation',
             mode TEXT NOT NULL DEFAULT 'chat',
             side TEXT NOT NULL DEFAULT 'Defence',
+            topic TEXT NOT NULL DEFAULT '',
+            ended INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -44,13 +60,27 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_messages_conversation
         ON messages(conversation_id, id);
         """)
+        _migrate_conversations(conn)
 
 
-def create_conversation(title="New conversation", mode="chat", side="Defence"):
+def create_conversation(
+    title="New conversation",
+    mode="chat",
+    side="Defence",
+    topic="",
+):
     with connect() as conn:
         cursor = conn.execute(
-            "INSERT INTO conversations(title, mode, side) VALUES (?, ?, ?)",
-            (title[:80] or "New conversation", mode, side),
+            """
+            INSERT INTO conversations(title, mode, side, topic, ended)
+            VALUES (?, ?, ?, ?, 0)
+            """,
+            (
+                title[:80] or "New conversation",
+                mode,
+                side,
+                (topic or "")[:500],
+            ),
         )
         conversation_id = cursor.lastrowid
 
@@ -105,7 +135,14 @@ def add_message(conversation_id, role, content):
         )
 
 
-def update_conversation(conversation_id, title=None, mode=None, side=None):
+def update_conversation(
+    conversation_id,
+    title=None,
+    mode=None,
+    side=None,
+    topic=None,
+    ended=None,
+):
     updates = []
     values = []
 
@@ -113,6 +150,8 @@ def update_conversation(conversation_id, title=None, mode=None, side=None):
         ("title", title),
         ("mode", mode),
         ("side", side),
+        ("topic", topic),
+        ("ended", ended),
     ):
         if value is not None:
             updates.append(f"{field} = ?")

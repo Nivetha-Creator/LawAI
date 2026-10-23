@@ -604,6 +604,12 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 
+.history-error {
+  margin: 0 4px 10px;
+  font-size: 11px;
+  padding: 10px 12px;
+}
+
 .error-message {
   display: flex;
   align-items: center;

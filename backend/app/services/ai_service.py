@@ -1,39 +1,55 @@
+"""
+Optional Google Gemini integration (lazy-loaded).
+
+The application runs without this package or API key; enable only when
+LAWYERAI_USE_LLM=1 and GEMINI_API_KEY are set.
+"""
+
+from __future__ import annotations
 
 import os
+
 from dotenv import load_dotenv
-from google import genai
 
 load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-
 _client = None
+
+
+def is_configured() -> bool:
+    return bool(API_KEY) and API_KEY != "your_actual_gemini_api_key"
+
+
+def use_llm_for_responses() -> bool:
+    return os.getenv("LAWYERAI_USE_LLM", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def generate_text(prompt: str) -> str:
     global _client
 
-    if not API_KEY or API_KEY == "your_actual_gemini_api_key":
-        return (
-            "AI is not configured. Add your Gemini API key to backend/.env "
-            "and restart the backend."
-        )
+    if not is_configured():
+        raise RuntimeError("Gemini is not configured.")
 
     try:
-        if _client is None:
-            _client = genai.Client(api_key=API_KEY)
+        from google import genai
+    except ImportError as exc:
+        raise RuntimeError(
+            "google-genai is not installed. Add it to your environment to use LLM mode."
+        ) from exc
 
-        response = _client.models.generate_content(
-            model=MODEL,
-            contents=prompt,
-        )
+    if _client is None:
+        _client = genai.Client(api_key=API_KEY)
 
-        return response.text or "The AI returned an empty response."
+    response = _client.models.generate_content(
+        model=MODEL,
+        contents=prompt,
+    )
 
-    except Exception as exc:
-        print(f"Gemini API error: {type(exc).__name__}: {exc}")
-        return (
-            "The AI service is temporarily unavailable. "
-            "Check the backend terminal and try again."
-        )
+    return response.text or "The AI returned an empty response."

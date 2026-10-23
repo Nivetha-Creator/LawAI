@@ -47,4 +47,9 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    from app.services import ai_service
+
+    return {
+        "status": "healthy",
+        "response_engine": "llm" if ai_service.is_configured() and ai_service.use_llm_for_responses() else "local",
+    }

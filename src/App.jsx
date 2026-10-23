@@ -35,6 +35,7 @@ function App() {
   const [debateStarted, setDebateStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [historyError, setHistoryError] = useState("");
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -43,8 +44,12 @@ function App() {
 
       const data = await response.json();
       setHistory(Array.isArray(data) ? data : data.conversations || []);
+      setHistoryError("");
     } catch (err) {
       console.error("History loading error:", err);
+      setHistoryError(
+        err.message || "Could not load conversation history. Is the backend running?"
+      );
     }
   }, []);
 
@@ -123,10 +128,11 @@ function App() {
 
       setSide(conversation.side || item.side || "");
       setTopic(conversation.topic || item.topic || "");
-      setDebateStarted(
-        (conversation.mode || item.mode) === "debate" &&
-          !conversation.ended
-      );
+      const isDebate =
+        conversation.mode === "debate" || item.mode === "debate";
+      const debateEnded =
+        Boolean(conversation.ended) || Number(conversation.ended) === 1;
+      setDebateStarted(isDebate && !debateEnded);
       setInput("");
       setMobileSidebar(false);
     } catch (err) {
@@ -217,9 +223,11 @@ function App() {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(
-        data.detail || data.error || "The server could not process your request."
-      );
+      const detail = data.detail;
+      const detailText = Array.isArray(detail)
+        ? detail.map((item) => item.msg || item.message || JSON.stringify(item)).join(" ")
+        : detail || data.error || "The server could not process your request.";
+      throw new Error(detailText);
     }
 
     const reply =
@@ -268,15 +276,12 @@ function App() {
 
     try {
       if (mode === "debate" && !debateStarted) {
-        const result = await requestAI(
-          `I will argue for the ${side}. The debate topic is: ${topic.trim()}. Start the debate by presenting the opposing argument and asking me to respond. The topic is for educational debate practice.`,
-          {
-            mode: "debate",
-            side,
-            topic: topic.trim(),
-            conversationId: null,
-          }
-        );
+        const result = await requestAI(text, {
+          mode: "debate",
+          side,
+          topic: topic.trim(),
+          conversationId: conversationId,
+        });
 
         setMessages((old) => [
           ...old,
@@ -376,6 +381,18 @@ function App() {
         </button>
 
         <div className="history-heading">YOUR HISTORY</div>
+
+        {historyError && (
+          <div className="error-message history-error" role="alert">
+            {historyError}
+            <button
+              onClick={() => refreshHistory()}
+              aria-label="Retry loading history"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         <div className="history-list">
           {history.length === 0 ? (

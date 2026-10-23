@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app import database
-from app.services.ai_service import generate_text
+from app.services.response_provider import generate_debate_review, generate_debate_turn
 
 router = APIRouter()
 
@@ -39,6 +39,7 @@ def debate(request: DebateRequest):
         )
 
     conversation = None
+    topic = (request.topic or "").strip()
 
     if request.conversation_id:
         conversation = database.get_conversation(request.conversation_id)
@@ -46,93 +47,61 @@ def debate(request: DebateRequest):
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found.")
 
+        if not topic:
+            topic = (conversation.get("topic") or "").strip()
+
         database.update_conversation(
             conversation["id"],
             mode="debate",
             side=side,
+            topic=topic or None,
         )
 
     if not conversation:
-        title_topic = (request.topic or request.message or "Legal debate").strip()
+        title_topic = topic or request.message.strip() or "Legal debate"
         conversation = database.create_conversation(
             title=f"Debate: {' '.join(title_topic.split())[:45]}",
             mode="debate",
             side=side,
+            topic=topic,
         )
 
     if request.end_debate:
-        transcript = database.get_conversation(
-            conversation["id"]
-        )["messages"]
+        transcript = database.get_conversation(conversation["id"])["messages"]
 
-        formatted = "\n".join(
-            f'{item["role"].upper()}: {item["content"]}'
-            for item in transcript[-30:]
-        )
+        review = generate_debate_review(transcript, side, topic)
 
-        review = generate_text(
-            "You are a constructive debate coach. Review the educational debate "
-            "transcript below. Score reasoning, evidence, rebuttals, clarity, and "
-            "responsiveness from 1-10. Explain strengths, improvements, and give "
-            "one practice exercise. Be balanced and do not predict a real court "
-            "outcome. If there is not enough material, say so.\n\n"
-            f"TRANSCRIPT:\n{formatted}"
-        )
+        review_body = "DEBATE REVIEW\n\n" + review
 
-        database.add_message(
-            conversation["id"],
-            "assistant",
-            "DEBATE REVIEW\n\n" + review,
-        )
+        database.add_message(conversation["id"], "assistant", review_body)
+        database.update_conversation(conversation["id"], ended=1)
 
         return {
-            "reply": review,
+            "reply": review_body,
             "conversation_id": conversation["id"],
             "ended": True,
             "title": conversation["title"],
+            "engine": "local",
         }
 
     message = request.message.strip()
 
     if not message:
-        message = f"Start a debate on this topic: {request.topic.strip()}"
-
-    if not message.strip():
         raise HTTPException(
             status_code=400,
             detail="Enter a debate topic or argument.",
         )
 
+    if not topic:
+        topic = (conversation.get("topic") or "").strip()
+        if topic:
+            database.update_conversation(conversation["id"], topic=topic)
+
     database.add_message(conversation["id"], "user", message)
 
-    transcript = database.get_conversation(
-        conversation["id"]
-    )["messages"][-12:]
+    transcript = database.get_conversation(conversation["id"])["messages"]
 
-    history = "\n".join(
-        f'{item["role"].upper()}: {item["content"]}'
-        for item in transcript
-    )
-
-    opposing_side = "Defence" if side == "Prosecution" else "Prosecution"
-
-    prompt = f"""
-You are LawyerAI's educational debate partner.
-The user represents {side}; you argue the opposing {opposing_side} side.
-Challenge the user's reasoning respectfully, address their latest point,
-and ask one focused follow-up question.
-
-Do not invent legal sections, facts, precedents, or citations.
-This is an educational exercise, not legal advice or a prediction of a real case.
-Keep your response concise and clear.
-
-DEBATE TRANSCRIPT:
-{history}
-
-Respond as the opposing side: {opposing_side}.
-"""
-
-    reply = generate_text(prompt)
+    reply = generate_debate_turn(side, topic, message, transcript)
 
     database.add_message(conversation["id"], "assistant", reply)
 
@@ -141,4 +110,5 @@ Respond as the opposing side: {opposing_side}.
         "conversation_id": conversation["id"],
         "ended": False,
         "title": conversation["title"],
+        "engine": "local",
     }
