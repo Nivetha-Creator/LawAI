@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 import {
   Scale,
@@ -16,12 +15,59 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_BASE = "http://127.0.0.1:8000";
+// Default: same-origin relative URLs so Vite can proxy to FastAPI.
+// Override with VITE_API_BASE_URL only when you intentionally call the API
+// on a different host (not needed for Cursor Cloud Agent or local Vite proxy).
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 const welcomeMessage = {
   role: "assistant",
   text: "Hello! Welcome to LawyerAI. Describe a legal situation or choose Argue a Case to explore legal arguments. How can I help you today?",
 };
+
+function normalizeSide(value) {
+  const side = String(value || "").trim().toLowerCase();
+  if (side === "prosecution") return "prosecution";
+  if (side === "defence" || side === "defense") return "defence";
+  return "";
+}
+
+function formatMessageNodes(text) {
+  if (!text) return null;
+
+  const nodes = [];
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      nodes.push(<strong key={`b-${key++}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("*") && token.endsWith("*")) {
+      nodes.push(<em key={`i-${key++}`}>{token.slice(1, -1)}</em>);
+    } else {
+      nodes.push(token);
+    }
+
+    lastIndex = match.index + token.length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function isFeedbackMessage(text) {
+  return /^DEBATE REVIEW\b/i.test(String(text || "").trim());
+}
 
 function App() {
   const [mode, setMode] = useState("chat");
@@ -35,6 +81,7 @@ function App() {
   const [debateStarted, setDebateStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [historyError, setHistoryError] = useState("");
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -43,8 +90,13 @@ function App() {
 
       const data = await response.json();
       setHistory(Array.isArray(data) ? data : data.conversations || []);
+      setHistoryError("");
     } catch (err) {
       console.error("History loading error:", err);
+      setHistoryError(
+        err.message ||
+          "Could not load conversation history. Is the backend running?"
+      );
     }
   }, []);
 
@@ -96,9 +148,7 @@ function App() {
     setError("");
 
     try {
-      const response = await fetch(
-        `${API_BASE}/conversations/${item.id}`
-      );
+      const response = await fetch(`${API_BASE}/conversations/${item.id}`);
 
       if (!response.ok) throw new Error("Could not open this conversation.");
 
@@ -121,12 +171,13 @@ function App() {
           : [welcomeMessage]
       );
 
-      setSide(conversation.side || item.side || "");
+      setSide(normalizeSide(conversation.side || item.side));
       setTopic(conversation.topic || item.topic || "");
-      setDebateStarted(
-        (conversation.mode || item.mode) === "debate" &&
-          !conversation.ended
-      );
+      const isDebate =
+        conversation.mode === "debate" || item.mode === "debate";
+      const debateEnded =
+        Boolean(conversation.ended) || Number(conversation.ended) === 1;
+      setDebateStarted(isDebate && !debateEnded);
       setInput("");
       setMobileSidebar(false);
     } catch (err) {
@@ -140,21 +191,21 @@ function App() {
     event.stopPropagation();
 
     const currentTitle = getConversationTitle(item);
-    const newTitle = window.prompt("Enter a new conversation title:", currentTitle);
+    const newTitle = window.prompt(
+      "Enter a new conversation title:",
+      currentTitle
+    );
 
     if (!newTitle || !newTitle.trim() || newTitle.trim() === currentTitle) {
       return;
     }
 
     try {
-      const response = await fetch(
-        `${API_BASE}/conversations/${item.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: newTitle.trim() }),
-        }
-      );
+      const response = await fetch(`${API_BASE}/conversations/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle.trim() }),
+      });
 
       if (!response.ok) throw new Error("Rename failed.");
 
@@ -174,10 +225,9 @@ function App() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE}/conversations/${item.id}`,
-        { method: "DELETE" }
-      );
+      const response = await fetch(`${API_BASE}/conversations/${item.id}`, {
+        method: "DELETE",
+      });
 
       if (!response.ok) throw new Error("Delete failed.");
 
@@ -217,9 +267,15 @@ function App() {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(
-        data.detail || data.error || "The server could not process your request."
-      );
+      const detail = data.detail;
+      const detailText = Array.isArray(detail)
+        ? detail
+            .map((item) => item.msg || item.message || JSON.stringify(item))
+            .join(" ")
+        : detail ||
+          data.error ||
+          "The server could not process your request.";
+      throw new Error(detailText);
     }
 
     const reply =
@@ -268,15 +324,12 @@ function App() {
 
     try {
       if (mode === "debate" && !debateStarted) {
-        const result = await requestAI(
-          `I will argue for the ${side}. The debate topic is: ${topic.trim()}. Start the debate by presenting the opposing argument and asking me to respond. The topic is for educational debate practice.`,
-          {
-            mode: "debate",
-            side,
-            topic: topic.trim(),
-            conversationId: null,
-          }
-        );
+        const result = await requestAI(text, {
+          mode: "debate",
+          side,
+          topic: topic.trim(),
+          conversationId: conversationId,
+        });
 
         setMessages((old) => [
           ...old,
@@ -351,6 +404,8 @@ function App() {
     }
   }
 
+  const showWelcome = messages.length === 1 && !loading;
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileSidebar ? "sidebar-open" : ""}`}>
@@ -377,6 +432,18 @@ function App() {
 
         <div className="history-heading">YOUR HISTORY</div>
 
+        {historyError && (
+          <div className="error-message history-error" role="alert">
+            <span>{historyError}</span>
+            <button
+              onClick={() => refreshHistory()}
+              aria-label="Retry loading history"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         <div className="history-list">
           {history.length === 0 ? (
             <div className="empty-history">
@@ -398,24 +465,30 @@ function App() {
                 }}
                 title={getConversationTitle(item)}
               >
-                <MessageCircle size={16} />
+                {item.mode === "debate" ? (
+                  <Gavel size={16} />
+                ) : (
+                  <MessageCircle size={16} />
+                )}
                 <span>{getConversationTitle(item)}</span>
-                <button
-                  className="delete-btn"
-                  onClick={(event) => renameConversation(item, event)}
-                  aria-label="Rename conversation"
-                  title="Rename"
-                >
-                  <Pencil size={13} />
-                </button>
-                <button
-                  className="delete-btn"
-                  onClick={(event) => deleteConversation(item, event)}
-                  aria-label="Delete conversation"
-                  title="Delete"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="history-actions">
+                  <button
+                    className="delete-btn"
+                    onClick={(event) => renameConversation(item, event)}
+                    aria-label="Rename conversation"
+                    title="Rename"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    className="delete-btn"
+                    onClick={(event) => deleteConversation(item, event)}
+                    aria-label="Delete conversation"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -468,20 +541,20 @@ function App() {
           </div>
 
           <div className="status-indicator">
-            <span className="status-dot" /> Legal assistant
+            <span className="status-dot" /> Local legal assistant
           </div>
         </header>
 
         <section className="chat-area">
           <div className="conversation">
-            {messages.length === 1 && (
+            {showWelcome && (
               <div className="welcome-section">
                 <div className="welcome-icon">
                   {mode === "chat" ? <Scale size={30} /> : <Gavel size={30} />}
                 </div>
 
                 <div className="welcome-eyebrow">
-                  <Sparkles size={14} /> YOUR LEGAL COMPANION
+                  <Sparkles size={14} /> LAWYERAI
                 </div>
 
                 <h2>
@@ -492,8 +565,8 @@ function App() {
 
                 <p className="welcome-description">
                   {mode === "chat"
-                    ? "Ask questions about Indian law and explore the legal provisions that may apply to your situation."
-                    : "Present a case, choose your side, and explore arguments and counterarguments."}
+                    ? "Ask questions about Indian law. LawyerAI answers from a curated local knowledge base—never inventing statutes or citations."
+                    : "Present a case, choose your side, and practise arguments with a local debate partner. Feedback is rule-based, not AI grading."}
                 </p>
 
                 {mode === "chat" ? (
@@ -505,7 +578,7 @@ function App() {
                     >
                       <span>01</span>
                       <strong>Understand Indian laws</strong>
-                      <small>Explore legal sections and their meaning</small>
+                      <small>Explore the BNS transition and related framework</small>
                     </button>
 
                     <button
@@ -517,25 +590,25 @@ function App() {
                     >
                       <span>02</span>
                       <strong>Explore a situation</strong>
-                      <small>Learn about possible legal remedies</small>
+                      <small>Learn about possible recovery routes</small>
                     </button>
 
                     <button
                       onClick={() =>
                         setInput(
-                          "What information is needed to identify the applicable law in a criminal case?"
+                          "What is an FIR and when might police register one?"
                         )
                       }
                     >
                       <span>03</span>
-                      <strong>Check a criminal case</strong>
-                      <small>Identify relevant facts and legal issues</small>
+                      <strong>FIR and complaints</strong>
+                      <small>High-level process information</small>
                     </button>
 
                     <button onClick={() => selectMode("debate")}>
                       <span>04</span>
                       <strong>Practice legal arguments</strong>
-                      <small>Switch to the case argument assistant</small>
+                      <small>Switch to Argue a Case</small>
                     </button>
                   </div>
                 ) : (
@@ -544,6 +617,7 @@ function App() {
 
                     <div className="side-buttons">
                       <button
+                        type="button"
                         className={side === "prosecution" ? "selected" : ""}
                         onClick={() => setSide("prosecution")}
                       >
@@ -553,6 +627,7 @@ function App() {
                       </button>
 
                       <button
+                        type="button"
                         className={side === "defence" ? "selected" : ""}
                         onClick={() => setSide("defence")}
                       >
@@ -585,27 +660,39 @@ function App() {
             )}
 
             <div className="message-list">
-              {messages.map((message, index) => (
-                <div
-                  className={`message-row ${message.role}`}
-                  key={`${index}-${message.role}`}
-                >
-                  <div className={`avatar ${message.role}`}>
-                    {message.role === "assistant" ? (
-                      <Scale size={18} />
-                    ) : (
-                      <UserRound size={18} />
-                    )}
-                  </div>
+              {!showWelcome &&
+                messages.map((message, index) => {
+                  const text = message.text;
+                  const feedback = isFeedbackMessage(text);
 
-                  <div className="message-content">
-                    <span className="message-author">
-                      {message.role === "assistant" ? "LawyerAI" : "You"}
-                    </span>
-                    <p>{message.text}</p>
-                  </div>
-                </div>
-              ))}
+                  return (
+                    <div
+                      className={`message-row ${message.role}`}
+                      key={`${index}-${message.role}`}
+                    >
+                      <div className={`avatar ${message.role}`}>
+                        {message.role === "assistant" ? (
+                          <Scale size={18} />
+                        ) : (
+                          <UserRound size={18} />
+                        )}
+                      </div>
+
+                      <div className="message-content">
+                        <span className="message-author">
+                          {message.role === "assistant" ? "LawyerAI" : "You"}
+                        </span>
+                        <div
+                          className={`message-bubble${
+                            feedback ? " feedback" : ""
+                          }`}
+                        >
+                          {formatMessageNodes(text)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
 
               {loading && (
                 <div className="message-row assistant">
@@ -614,18 +701,23 @@ function App() {
                   </div>
                   <div className="message-content">
                     <span className="message-author">LawyerAI</span>
-                    <p className="loading-message">
-                      <LoaderCircle size={16} className="loading-spinner" />
-                      Thinking...
-                    </p>
+                    <div className="message-bubble">
+                      <p className="loading-message">
+                        <LoaderCircle size={16} className="loading-spinner" />
+                        Preparing a local response...
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
 
               {error && (
                 <div className="error-message" role="alert">
-                  {error}
-                  <button onClick={() => setError("")} aria-label="Dismiss error">
+                  <span>{error}</span>
+                  <button
+                    onClick={() => setError("")}
+                    aria-label="Dismiss error"
+                  >
                     <X size={15} />
                   </button>
                 </div>
@@ -640,6 +732,7 @@ function App() {
               className="end-debate-btn"
               onClick={endDebate}
               disabled={loading}
+              type="button"
             >
               End debate &amp; request feedback
             </button>
@@ -649,7 +742,7 @@ function App() {
             <div className="debate-context">
               <span>YOUR SIDE</span>
               <strong>{side || "Choose Prosecution or Defence above"}</strong>
-              {topic && <span>TOPIC: {topic}</span>}
+              {topic && <span className="topic-chip">TOPIC: {topic}</span>}
             </div>
           )}
 
@@ -667,7 +760,7 @@ function App() {
                 mode === "chat"
                   ? "Describe your legal question or situation..."
                   : debateStarted
-                    ? "Present your argument or respond to the AI..."
+                    ? "Present your argument or respond to opposing counsel..."
                     : "Enter your opening argument..."
               }
               rows={2}
@@ -691,7 +784,9 @@ function App() {
 
           <p className="disclaimer">
             LawyerAI provides general legal information, not legal advice.
-            Verify applicable laws with official sources or a qualified lawyer.
+            Answers use a local knowledge base unless an optional LLM is
+            configured. Verify applicable laws with official sources or a
+            qualified lawyer.
           </p>
         </footer>
       </main>
