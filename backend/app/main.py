@@ -3,12 +3,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import database
-from app.routers import chat, debate, conversations
+from app.routers import chat, debate, conversations, strategy
 
 app = FastAPI(
     title="LawyerAI",
-    description="Indian Legal Information and Educational Debate Assistant",
-    version="2.0.0",
+    description="Indian Legal Information, Debate, and Strategy Analysis Assistant",
+    version="2.1.0",
 )
 
 # Local Vite origins only (localhost and 127.0.0.1 — browsers treat them as distinct).
@@ -33,6 +33,7 @@ def startup():
 
 app.include_router(chat.router, tags=["Legal chat"])
 app.include_router(debate.router, tags=["Case debate"])
+app.include_router(strategy.router, tags=["Legal strategy"])
 app.include_router(conversations.router)
 
 
@@ -43,6 +44,7 @@ def home():
         "features": [
             "Local legal information engine",
             "Local educational debate",
+            "Legal strategy analysis",
             "Persistent conversation history",
         ],
         "response_engine": "local",

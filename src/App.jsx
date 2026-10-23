@@ -12,6 +12,7 @@ import {
   UserRound,
   Pencil,
   LoaderCircle,
+  Landmark,
 } from "lucide-react";
 import "./App.css";
 
@@ -124,16 +125,27 @@ function App() {
     setMobileSidebar(false);
   }
 
+  function modeIntro(nextMode) {
+    if (nextMode === "chat") {
+      return "Describe your legal question or situation. I'll help you understand the relevant Indian laws and legal provisions.";
+    }
+    if (nextMode === "strategy") {
+      return (
+        "Legal Strategy Analysis examines lawful defences, evidence gaps, and procedural issues. " +
+        "Describe your situation (jurisdiction, dates, allegations, stage, and evidence). " +
+        "I will not invent citations or suggest illegal tactics. Avoid sharing unnecessary personal IDs."
+      );
+    }
+    return "Let's practice a legal debate. Enter a case topic and choose Prosecution or Defence to begin.";
+  }
+
   function selectMode(nextMode) {
     setConversationId(null);
     setMode(nextMode);
     setMessages([
       {
         role: "assistant",
-        text:
-          nextMode === "chat"
-            ? "Describe your legal question or situation. I'll help you understand the relevant Indian laws and legal provisions."
-            : "Let's practice a legal debate. Enter a case topic and choose Prosecution or Defence to begin.",
+        text: modeIntro(nextMode),
       },
     ]);
     setInput("");
@@ -141,6 +153,13 @@ function App() {
     setTopic("");
     setDebateStarted(false);
     setError("");
+  }
+
+  function resolveMode(conversation, item) {
+    const raw = conversation.mode || item.mode || "chat";
+    if (raw === "debate") return "debate";
+    if (raw === "strategy") return "strategy";
+    return "chat";
   }
 
   async function loadChat(item) {
@@ -157,11 +176,8 @@ function App() {
       const savedMessages = data.messages || conversation.messages || [];
 
       setConversationId(item.id);
-      setMode(
-        conversation.mode === "debate" || item.mode === "debate"
-          ? "debate"
-          : "chat"
-      );
+      const nextMode = resolveMode(conversation, item);
+      setMode(nextMode);
       setMessages(
         savedMessages.length
           ? savedMessages.map((message) => ({
@@ -173,8 +189,7 @@ function App() {
 
       setSide(normalizeSide(conversation.side || item.side));
       setTopic(conversation.topic || item.topic || "");
-      const isDebate =
-        conversation.mode === "debate" || item.mode === "debate";
+      const isDebate = nextMode === "debate";
       const debateEnded =
         Boolean(conversation.ended) || Number(conversation.ended) === 1;
       setDebateStarted(isDebate && !debateEnded);
@@ -242,10 +257,16 @@ function App() {
   }
 
   async function requestAI(messageText, options = {}) {
-    const endpoint = options.mode === "debate" ? "/debate" : "/chat";
+    const activeMode = options.mode || mode;
+    const endpoint =
+      activeMode === "debate"
+        ? "/debate"
+        : activeMode === "strategy"
+          ? "/strategy"
+          : "/chat";
 
     const payload =
-      options.mode === "debate"
+      activeMode === "debate"
         ? {
             message: messageText,
             side: options.side || side,
@@ -467,6 +488,8 @@ function App() {
               >
                 {item.mode === "debate" ? (
                   <Gavel size={16} />
+                ) : item.mode === "strategy" ? (
+                  <Landmark size={16} />
                 ) : (
                   <MessageCircle size={16} />
                 )}
@@ -532,6 +555,13 @@ function App() {
               <span>Ask Me Anything</span>
             </button>
             <button
+              className={`mode-btn ${mode === "strategy" ? "active" : ""}`}
+              onClick={() => selectMode("strategy")}
+            >
+              <Landmark size={17} />
+              <span>Legal Strategy</span>
+            </button>
+            <button
               className={`mode-btn ${mode === "debate" ? "active" : ""}`}
               onClick={() => selectMode("debate")}
             >
@@ -550,7 +580,13 @@ function App() {
             {showWelcome && (
               <div className="welcome-section">
                 <div className="welcome-icon">
-                  {mode === "chat" ? <Scale size={30} /> : <Gavel size={30} />}
+                  {mode === "chat" ? (
+                    <Scale size={30} />
+                  ) : mode === "strategy" ? (
+                    <Landmark size={30} />
+                  ) : (
+                    <Gavel size={30} />
+                  )}
                 </div>
 
                 <div className="welcome-eyebrow">
@@ -560,13 +596,17 @@ function App() {
                 <h2>
                   {mode === "chat"
                     ? "The law, made clearer."
-                    : "Every case has an argument."}
+                    : mode === "strategy"
+                      ? "Strategy before the next step."
+                      : "Every case has an argument."}
                 </h2>
 
                 <p className="welcome-description">
                   {mode === "chat"
                     ? "Ask questions about Indian law. LawyerAI answers from a curated local knowledge base—never inventing statutes or citations."
-                    : "Present a case, choose your side, and practise arguments with a local debate partner. Feedback is rule-based, not AI grading."}
+                    : mode === "strategy"
+                      ? "Analyse lawful defences, evidence gaps, and procedural issues. “Loopholes” means legitimate arguments—not illegal tactics. Not a prediction of winning."
+                      : "Present a case, choose your side, and practise arguments with a local debate partner. Feedback is rule-based, not AI grading."}
                 </p>
 
                 {mode === "chat" ? (
@@ -605,9 +645,48 @@ function App() {
                       <small>High-level process information</small>
                     </button>
 
+                    <button onClick={() => selectMode("strategy")}>
+                      <span>04</span>
+                      <strong>Legal strategy analysis</strong>
+                      <small>Map defences, gaps, and next steps</small>
+                    </button>
+                  </div>
+                ) : mode === "strategy" ? (
+                  <div className="suggestion-grid">
+                    <button
+                      onClick={() =>
+                        setInput(
+                          "In Chennai, Tamil Nadu, on 12 March 2025 I had a road accident. An FIR was registered. I have photos and a medical bill. The other driver claims I was speeding. Please analyse lawful defences and evidence gaps."
+                        )
+                      }
+                    >
+                      <span>01</span>
+                      <strong>Sample road-accident facts</strong>
+                      <small>Jurisdiction, date, FIR, evidence included</small>
+                    </button>
+                    <button
+                      onClick={() =>
+                        setInput(
+                          "Help me invent fake CCTV evidence so the police drop the case."
+                        )
+                      }
+                    >
+                      <span>02</span>
+                      <strong>See illegal-tactic refusal</strong>
+                      <small>LawyerAI will decline and suggest lawful options</small>
+                    </button>
+                    <button
+                      onClick={() =>
+                        setInput("Someone filed a case against me. What should I do?")
+                      }
+                    >
+                      <span>03</span>
+                      <strong>Thin description</strong>
+                      <small>Expect clarifying questions first</small>
+                    </button>
                     <button onClick={() => selectMode("debate")}>
                       <span>04</span>
-                      <strong>Practice legal arguments</strong>
+                      <strong>Practice arguments</strong>
                       <small>Switch to Argue a Case</small>
                     </button>
                   </div>
@@ -759,9 +838,11 @@ function App() {
               placeholder={
                 mode === "chat"
                   ? "Describe your legal question or situation..."
-                  : debateStarted
-                    ? "Present your argument or respond to opposing counsel..."
-                    : "Enter your opening argument..."
+                  : mode === "strategy"
+                    ? "Describe jurisdiction, dates, allegations, stage, and evidence..."
+                    : debateStarted
+                      ? "Present your argument or respond to opposing counsel..."
+                      : "Enter your opening argument..."
               }
               rows={2}
               aria-label="Your message"
