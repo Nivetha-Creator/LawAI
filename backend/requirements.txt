@@ -4,8 +4,8 @@ python-dotenv>=1.0.0,<2.0
 pytest>=8.0.0,<9.0
 httpx>=0.27.0,<1.0
 
-# Optional — only needed when LAWYERAI_USE_LLM=1 and GEMINI_API_KEY is set:
-# google-genai>=1.0.0
+# Installed for Render when LAWYERAI_USE_LLM=1 (SDK imported lazily in gemini_provider).
+google-genai>=1.0.0
 
 # Optional — local RAG. Not imported while LAWYERAI_RAG_ENABLED is off.
 # Python 3.12. Chroma 0.5.5–1.1 includes ONNXMiniLM_L6_V2 (local MiniLM).
