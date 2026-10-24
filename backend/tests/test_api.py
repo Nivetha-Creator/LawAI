@@ -102,12 +102,21 @@ def test_chat_and_conversation_crud(client):
     body = chat.json()
     conv_id = body["conversation_id"]
 
+    follow = client.post(
+        "/chat",
+        json={"message": "What documents are usually needed for that FIR process?", "conversation_id": conv_id},
+    )
+    assert follow.status_code == 200
+    assert follow.json()["conversation_id"] == conv_id
+    assert follow.json()["engine"] == "local"
+
     detail = client.get(f"/conversations/{conv_id}")
     assert detail.status_code == 200
     messages = detail.json()["messages"]
-    assert len(messages) >= 2
+    assert len(messages) >= 4
     assert messages[0]["role"] == "user"
     assert "FIR" in messages[0]["content"] or "fir" in messages[0]["content"].lower()
+    assert any("documents" in m["content"].lower() for m in messages if m["role"] == "user")
 
     listed = client.get("/conversations")
     assert listed.status_code == 200
@@ -245,6 +254,20 @@ def test_cors_allows_local_vite_origins(client):
         )
         assert response.status_code in (200, 204)
         assert response.headers.get("access-control-allow-origin") == origin
+
+
+def test_cors_allows_render_frontend_origin(client):
+    origin = "https://lawyerai-frontend-39i1.onrender.com"
+    response = client.options(
+        "/chat",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code in (200, 204)
+    assert response.headers.get("access-control-allow-origin") == origin
 
 
 def test_strategy_endpoint_clarify_and_complete(client):

@@ -16,9 +16,9 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-// Default: same-origin relative URLs so Vite can proxy to FastAPI.
-// Override with VITE_API_BASE_URL only when you intentionally call the API
-// on a different host (not needed for Cursor Cloud Agent or local Vite proxy).
+// Local dev: leave VITE_API_BASE_URL unset — Vite proxies /chat, /strategy, etc. to FastAPI.
+// Production (e.g. Render static site): set at build time, e.g.
+// VITE_API_BASE_URL=https://lawai-0i1a.onrender.com
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 const welcomeMessage = {
@@ -285,6 +285,7 @@ function App() {
       body: JSON.stringify(payload),
     });
 
+    const contentType = response.headers.get("content-type") || "";
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -299,12 +300,19 @@ function App() {
       throw new Error(detailText);
     }
 
-    const reply =
-      data.reply ??
-      data.answer ??
-      data.response ??
-      data.message ??
-      "The server responded without an answer.";
+    const replyField =
+      data.reply ?? data.answer ?? data.response ?? data.message ?? null;
+
+    if (replyField == null || replyField === "") {
+      if (contentType.includes("text/html") || !API_BASE) {
+        throw new Error(
+          "Could not reach the LawyerAI API. For production builds, set VITE_API_BASE_URL to your backend URL (for example https://lawai-0i1a.onrender.com) and redeploy the frontend."
+        );
+      }
+      throw new Error("The server responded without an answer.");
+    }
+
+    const reply = replyField;
 
     if (data.conversation_id != null) {
       setConversationId(data.conversation_id);

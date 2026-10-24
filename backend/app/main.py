@@ -1,3 +1,4 @@
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,15 +12,29 @@ app = FastAPI(
     version="2.1.0",
 )
 
-# Local Vite origins only (localhost and 127.0.0.1 — browsers treat them as distinct).
+_DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "https://lawyerai-frontend-39i1.onrender.com",
+)
+
+
+def cors_origins() -> list[str]:
+    """Browser origins allowed to call the API (local Vite + deployed static site)."""
+    origins = list(_DEFAULT_CORS_ORIGINS)
+    extra = os.getenv("LAWYERAI_CORS_ORIGINS", "")
+    for item in extra.split(","):
+        origin = item.strip()
+        if origin and origin not in origins:
+            origins.append(origin)
+    return origins
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
