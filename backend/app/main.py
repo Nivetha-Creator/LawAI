@@ -53,6 +53,7 @@ def home():
 
 @app.get("/health")
 def health():
+    from app.rag.retrieve import rag_enabled
     from app.services import ai_service
 
     gemini_fallback = ai_service.fallback_enabled()
@@ -60,4 +61,5 @@ def health():
         "status": "healthy",
         "response_engine": "local",
         "gemini_fallback": gemini_fallback,
+        "rag_enabled": rag_enabled(),
     }

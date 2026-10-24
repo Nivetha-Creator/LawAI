@@ -20,6 +20,7 @@ def test_health_local_engine(client):
     assert body["status"] == "healthy"
     assert body["response_engine"] == "local"
     assert body.get("gemini_fallback") is False
+    assert body.get("rag_enabled") is False
 
 
 def test_docs_available(client):

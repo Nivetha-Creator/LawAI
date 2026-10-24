@@ -37,7 +37,7 @@ def test_local_match_never_calls_gemini(monkeypatch):
     monkeypatch.setenv("LAWYERAI_USE_LLM", "1")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-used")
     ai_service.reload_settings_from_env()
-    monkeypatch.setattr(ai_service, "generate_text", boom)
+    monkeypatch.setattr(response_provider, "complete_llm", boom)
 
     reply, engine = response_provider.generate_chat_reply(
         "Explain the difference between BNS and IPC",
@@ -54,9 +54,9 @@ def test_gemini_fallback_uses_mocked_response(monkeypatch):
     ai_service.reload_settings_from_env()
 
     monkeypatch.setattr(
-        ai_service,
-        "generate_text",
-        lambda prompt: "General steps may include documenting facts and consulting an advocate.",
+        response_provider,
+        "complete_llm",
+        lambda request: "General steps may include documenting facts and consulting an advocate.",
     )
 
     reply, engine = response_provider.generate_chat_reply(
@@ -82,7 +82,7 @@ def test_gemini_failure_returns_graceful_fallback(monkeypatch):
     def fail(_prompt):
         raise GeminiError("Gemini rate limit or quota exceeded.")
 
-    monkeypatch.setattr(ai_service, "generate_text", fail)
+    monkeypatch.setattr(response_provider, "complete_llm", fail)
 
     reply, engine = response_provider.generate_chat_reply(
         "Obscure 1953 municipal pigeon coop bye-law number?",

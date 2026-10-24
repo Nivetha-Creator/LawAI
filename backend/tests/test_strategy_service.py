@@ -96,9 +96,9 @@ def test_strategy_gemini_enrichment_mocked(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     ai_service.reload_settings_from_env()
     monkeypatch.setattr(
-        ai_service,
-        "generate_text",
-        lambda prompt: "Research limitation periods with counsel. Citations unverified.",
+        response_provider,
+        "complete_llm",
+        lambda request: "Research limitation periods with counsel. Citations unverified.",
     )
 
     local = analyze_legal_strategy(obscure)
@@ -126,7 +126,7 @@ def test_strategy_gemini_failure_keeps_local_analysis(monkeypatch):
     def fail(_prompt):
         raise ai_service.GeminiError("Gemini request timed out.")
 
-    monkeypatch.setattr(ai_service, "generate_text", fail)
+    monkeypatch.setattr(response_provider, "complete_llm", fail)
 
     reply, engine = response_provider.generate_strategy_reply(
         obscure,

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from app.knowledge.topics import LEGAL_TOPICS
+from app.llm.types import GenerationRequest
 from app.services.legal_service import match_topics, normalize_query
 
 OFFICIAL_SOURCE = "https://www.indiacode.nic.in/"
@@ -387,15 +388,44 @@ Keep the note under 250 words.
 """
 
 
-def build_strategy_enrichment_prompt(user_text: str, local_analysis: str) -> str:
-    return (
-        f"{STRATEGY_GEMINI_PROMPT.strip()}\n\n"
-        f"User facts:\n{user_text}\n\n"
-        f"Local analysis already provided (do not contradict safety rules):\n"
-        f"{local_analysis[:3000]}\n\n"
-        "Add a short unverified supplementary note on possible legal themes to research "
-        "with a lawyer. Explicitly state that citations are unverified."
+def strategy_generation_request(
+    user_text: str,
+    local_analysis: str,
+    evidence: str = "",
+) -> GenerationRequest:
+    """Neutral request. Empty evidence keeps the previous enrichment prompt."""
+    evidence = (evidence or "").strip()
+    if not evidence:
+        return GenerationRequest(
+            system_instruction=STRATEGY_GEMINI_PROMPT.strip(),
+            user_prompt=(
+                f"User facts:\n{user_text}\n\n"
+                f"Local analysis already provided (do not contradict safety rules):\n"
+                f"{local_analysis[:3000]}\n\n"
+                "Add a short unverified supplementary note on possible legal themes to research "
+                "with a lawyer. Explicitly state that citations are unverified."
+            ),
+        )
+    return GenerationRequest(
+        system_instruction=(
+            STRATEGY_GEMINI_PROMPT.strip()
+            + "\nCite only titles, sections, and URLs that appear in the retrieved evidence. "
+            "https://www.indiacode.nic.in/ may be named as a general official source."
+        ),
+        user_prompt=(
+            f"User facts:\n{user_text}\n\n"
+            f"Local analysis already provided (do not contradict safety rules):\n"
+            f"{local_analysis[:3000]}\n\n"
+            f"Retrieved evidence:\n{evidence}\n\n"
+            "Add a short note grounded in that evidence. Do not invent citations."
+        ),
     )
+
+
+def build_strategy_enrichment_prompt(user_text: str, local_analysis: str) -> str:
+    request = strategy_generation_request(user_text, local_analysis)
+    system = (request.system_instruction or "").strip()
+    return f"{system}\n\n{request.user_prompt}"
 
 
 def format_strategy_enrichment(raw: str) -> str:

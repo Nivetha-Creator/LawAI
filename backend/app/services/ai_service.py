@@ -1,123 +1,73 @@
 """
-Optional Google Gemini integration (lazy-loaded).
+Compatibility facade for optional LLM fallback.
 
-Used as a **fallback** for chat when the local knowledge base cannot answer,
-and only when LAWYERAI_USE_LLM is enabled with a valid GEMINI_API_KEY.
+Gemini SDK calls live in ``app.llm.gemini_provider``. This module keeps the
+prompt text, reply labelling, and the helpers existing callers already use
+(``fallback_enabled``, ``generate_text``, ``GeminiError``).
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any
 
 from dotenv import load_dotenv
 
+from app.llm.factory import (
+    fallback_enabled as provider_fallback_enabled,
+)
+from app.llm.factory import (
+    reset_llm_provider,
+    use_llm_for_responses as provider_use_llm,
+)
+from app.llm.gemini_provider import GeminiError
+from app.llm.types import GenerationRequest
+
 load_dotenv()
 
+# Kept in sync by ``reload_settings_from_env`` for older callers/tests.
 API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-# Soft timeout guidance for callers; SDK calls may still raise.
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "25"))
-
-_client: Any = None
-
-
-class GeminiError(Exception):
-    """Raised when Gemini cannot produce a usable response."""
 
 
 def reload_settings_from_env() -> None:
-    """Refresh module settings (used by tests)."""
-    global API_KEY, MODEL, REQUEST_TIMEOUT_SECONDS, _client
+    """Refresh cached provider state (used by tests)."""
+    global API_KEY, MODEL, REQUEST_TIMEOUT_SECONDS
     API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    REQUEST_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "25"))
-    _client = None
+    raw_timeout = os.getenv("GEMINI_TIMEOUT_SECONDS", "25")
+    try:
+        REQUEST_TIMEOUT_SECONDS = float(raw_timeout)
+    except ValueError:
+        REQUEST_TIMEOUT_SECONDS = 25.0
+    reset_llm_provider()
 
 
 def is_configured() -> bool:
-    return bool(API_KEY) and API_KEY not in {
-        "your_actual_gemini_api_key",
-        "changeme",
-        "xxx",
-    }
+    from app.llm.gemini_provider import key_is_usable
+
+    return key_is_usable()
 
 
 def use_llm_for_responses() -> bool:
-    """When true, Gemini may be used as chat fallback (not as primary local engine)."""
-    return os.getenv("LAWYERAI_USE_LLM", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    """When true, an LLM may be used as chat/strategy fallback."""
+    return provider_use_llm()
 
 
 def fallback_enabled() -> bool:
-    return use_llm_for_responses() and is_configured()
-
-
-def _build_client():
-    global _client
-    try:
-        from google import genai
-    except ImportError as exc:
-        raise GeminiError(
-            "google-genai is not installed. Run: pip install google-genai"
-        ) from exc
-
-    if _client is None:
-        _client = genai.Client(api_key=API_KEY)
-    return _client
+    return provider_fallback_enabled()
 
 
 def generate_text(prompt: str) -> str:
     """
-    Call Gemini. Raises GeminiError on configuration/API/empty failures.
-    Does not invent a fake success response.
+    Call the configured provider with a single prompt string.
+
+    Raises ``GeminiError`` (an ``LLMError``) when Gemini is selected and cannot
+    answer. Does not invent a fake success response.
     """
-    if not is_configured():
-        raise GeminiError("Gemini is not configured (missing GEMINI_API_KEY).")
+    from app.llm.factory import complete
 
-    try:
-        client = _build_client()
-        # google-genai client; http_options timeout support varies by version.
-        try:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=prompt,
-                config={"http_options": {"timeout": int(REQUEST_TIMEOUT_SECONDS * 1000)}},
-            )
-        except TypeError:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=prompt,
-            )
-    except GeminiError:
-        raise
-    except Exception as exc:  # noqa: BLE001 — surface SDK/network failures
-        name = type(exc).__name__
-        message = str(exc).lower()
-        if "resource_exhausted" in message or "429" in message or "quota" in message:
-            raise GeminiError("Gemini rate limit or quota exceeded.") from exc
-        if "timeout" in message or "timed out" in message:
-            raise GeminiError("Gemini request timed out.") from exc
-        if "401" in message or "403" in message or "permission" in message:
-            raise GeminiError("Gemini rejected the API key or permissions.") from exc
-        raise GeminiError(f"Gemini API error ({name}).") from exc
-
-    text = getattr(response, "text", None)
-    if text is None and hasattr(response, "candidates"):
-        # Best-effort extract if .text is empty but candidates exist.
-        try:
-            text = response.text
-        except Exception:  # noqa: BLE001
-            text = None
-
-    if not text or not str(text).strip():
-        raise GeminiError("Gemini returned an empty response.")
-
-    return str(text).strip()
+    return complete(GenerationRequest(user_prompt=prompt))
 
 
 GEMINI_CHAT_SYSTEM = """
@@ -133,13 +83,51 @@ Rules:
 """
 
 
-def build_legal_fallback_prompt(message: str, history: str) -> str:
-    return (
-        f"{GEMINI_CHAT_SYSTEM.strip()}\n\n"
-        f"Conversation (recent):\n{history or '(none)'}\n\n"
-        f"User question:\n{message}\n\n"
-        "Answer helpfully within the rules above."
+def chat_generation_request(message: str, history: str) -> GenerationRequest:
+    """Neutral request whose Gemini rendering matches the previous chat prompt."""
+    return GenerationRequest(
+        system_instruction=GEMINI_CHAT_SYSTEM.strip(),
+        user_prompt=(
+            f"Conversation (recent):\n{history or '(none)'}\n\n"
+            f"User question:\n{message}\n\n"
+            "Answer helpfully within the rules above."
+        ),
     )
+
+
+EVIDENCE_CHAT_SYSTEM = """
+You are LawyerAI's optional fallback assistant for general Indian legal information.
+You are NOT a lawyer and must NOT present answers as verified legal advice.
+
+Rules:
+- Use only the retrieved evidence block for titles, sections, and URLs.
+- You may also mention https://www.indiacode.nic.in/ as a general official source.
+- If the evidence is not enough, say so. Do not invent statute numbers, case names, or URLs.
+- Keep the answer concise.
+"""
+
+
+def chat_evidence_generation_request(
+    message: str,
+    history: str,
+    evidence: str,
+) -> GenerationRequest:
+    """Grounded chat request. Used only when retrieval returned chunks."""
+    return GenerationRequest(
+        system_instruction=EVIDENCE_CHAT_SYSTEM.strip(),
+        user_prompt=(
+            f"Retrieved evidence:\n{evidence}\n\n"
+            f"Conversation (recent):\n{history or '(none)'}\n\n"
+            f"User question:\n{message}\n\n"
+            "Answer using only the evidence above."
+        ),
+    )
+
+
+def build_legal_fallback_prompt(message: str, history: str) -> str:
+    request = chat_generation_request(message, history)
+    system = (request.system_instruction or "").strip()
+    return f"{system}\n\n{request.user_prompt}"
 
 
 def format_gemini_reply(raw: str) -> str:

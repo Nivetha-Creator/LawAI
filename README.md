@@ -163,14 +163,55 @@ Database file (created at runtime): `backend/lawyerai.db` (gitignored).
 
 Default = **local knowledge base only**. Gemini is never required.
 
-When enabled, Gemini is used **only if** the local knowledge base cannot answer an Ask Me Anything question. Debate stays local. AI replies are labelled as unverified fallback—not curated legal advice.
+When enabled, the configured LLM is used **only if** the local knowledge base cannot answer an Ask Me Anything question, and for Legal Strategy **only** to add an unverified note when no curated law topic matched. Debate stays local. AI replies are labelled as unverified fallback—not curated legal advice.
+
+Chat and strategy call a small provider interface (`backend/app/llm/`). Gemini is the only adapter. `LAWYERAI_LLM_PROVIDER` defaults to `gemini`.
 
 1. `pip install google-genai`
 2. Copy `backend/.env.example` → `backend/.env` (never commit `.env`)
-3. Set `LAWYERAI_USE_LLM=1` and `GEMINI_API_KEY=...`
+3. Set `LAWYERAI_USE_LLM=1` and `GEMINI_API_KEY=...` (optional `GEMINI_MODEL`, `GEMINI_TIMEOUT_SECONDS`)
 4. Restart the backend
 
 Confirm `GET /health` shows `"gemini_fallback": true` only when both flag and key are set.
+
+---
+
+## Optional local RAG (off by default)
+
+Retrieval uses ChromaDB and a **local** MiniLM embedder (Chroma's ONNX `ONNXMiniLM_L6_V2`). It does not call a hosted embedding API, and it does not use Gemini to embed text. Gemini text generation is unchanged and stays behind `LAWYERAI_USE_LLM`.
+
+`LAWYERAI_RAG_ENABLED` defaults to off. While it is off, the app does not import Chroma and does not need the package installed.
+
+When it is on:
+
+- **Ask Me Anything** still prefers the keyword knowledge base. Retrieval runs only for questions the local engine marks unknown.
+- **Legal Strategy** still refuses illegal requests and asks clarifying questions before any retrieval. Retrieval runs only when a complete analysis has no curated law match.
+- **Debate Practice** stays local and does not call the LLM or the index.
+- If chunks are found and the LLM is off or fails, the reply quotes those chunks and labels them as retrieved excerpts, not a verified legal answer.
+- Generated citations are kept only when every recognized reference is supported by the retrieved chunks. That includes `section` / `sec.` / `s.` / `§`, `article` / `art.`, act-plus-number forms such as `IPC 302` and `BNS 103`, and both `http(s)://` and `www.` URLs. The only standing URL is the exact India Code homepage, with no extra path. Ranges, roman numerals, and other unclear citation syntax are rejected. Otherwise the reply falls back to retrieved excerpts, which are not a verified legal opinion.
+- The index uses Chroma's default distance: **squared L2** (`hnsw:space` is left unset, so the server default `l2` applies). That is the sum of squared differences, not cosine similarity and not the square root. Lower is closer, and the value has no finite upper bound. This repository has not measured those distances on a real collection.
+- `LAWYERAI_RAG_MAX_DISTANCE` defaults to **1.0** when unset. That cutoff is **provisional and uncalibrated**. It only stops the previous behavior of keeping every neighbor. It may hide useful chunks and may still let weak chunks through. Set a finite number `>= 0` after you compare distances on your own index. Neighbors farther than the cutoff, and queries that match nothing, are treated as no evidence: they are not sent to the LLM and are not shown as retrieved excerpts. The reply stays on the local engine.
+- Metadata filters are optional. A jurisdiction filter is sent to Chroma as an exact equality match, and only when the question contains one explicit `jurisdiction: TOKEN` (or `jurisdiction=TOKEN`) marker. Place names such as "Maharashtra" are not guessed. An effective-date filter is applied in Python, not as a Chroma inequality, and only when the question contains exactly one real `YYYY-MM-DD` date. Chunks whose `effective_date` is missing, blank, invalid, or later than that date are excluded. `document_version` and `published_date` are not substitutes. With a date filter, retrieval reads at most 32 nearest neighbors (or `k`, if `k` is larger) and then keeps at most `k` that pass. If the question does not establish a jurisdiction or a single ISO date, that filter is left off.
+
+Indexed files stay on this machine (`LAWYERAI_CHROMA_PATH`, default `data/chroma`). Do not put confidential case files in the corpus. The repository does not download or scrape official legislation; you supply local `.md` or `.txt` files yourself.
+
+Install only if you enable RAG (Python 3.12, Chroma 0.5.5 through 1.1):
+
+```bash
+pip install "chromadb>=0.5.5,<1.2"
+```
+
+Each document is a folder with `document.json` and exactly one `.md` or `.txt` file. Required JSON fields: `source_title`, `official_url`, `jurisdiction`, `document_version`. Optional: `effective_date`, `published_date`, `section`, `document_id`. Dates must be `YYYY-MM-DD`. Missing required fields are rejected.
+
+```bash
+cd backend
+# LAWYERAI_RAG_ENABLED=true
+python -m app.rag.ingest --corpus-root path\to\corpus --chroma-path data\chroma
+```
+
+The ingester builds a new collection and switches the active pointer only after that build is marked ready. An incomplete build does not replace the active collection. A missing, corrupt, or empty `active_index.json`, or a pointer that names a collection that is not in the store, raises an error. Queries do not fall back to the default collection name `legal_chunks`. This is not a background updater and does not by itself guarantee zero downtime across processes.
+
+`GET /health` includes `"rag_enabled": false` unless the flag is on.
 
 ---
 
