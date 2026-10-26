@@ -18,6 +18,8 @@ class LegalTopic(TypedDict):
     details: str
     practical_steps: str
     clarifying_question: str
+    # "education" answers a general question; "situation" is a personal dispute.
+    kind: str
 
 
 def _topic(
@@ -31,6 +33,7 @@ def _topic(
         "Could you share a bit more—what happened, where, and what outcome "
         "you need (complaint, compensation, or insurance)?"
     ),
+    kind: str = "situation",
 ) -> LegalTopic:
     return {
         "id": id,
@@ -40,6 +43,7 @@ def _topic(
         "details": details,
         "practical_steps": practical_steps,
         "clarifying_question": clarifying_question,
+        "kind": kind,
     }
 
 
@@ -87,6 +91,7 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
             "Are you asking about which statute name applies generally, or about a "
             "specific police/court paper that still cites IPC or CrPC?"
         ),
+        kind="education",
     ),
     _topic(
         id="fir_and_complaint",
@@ -124,6 +129,7 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
             "Is your question about how to file a police complaint generally, or about "
             "a specific incident (for example a road accident or theft)?"
         ),
+        kind="education",
     ),
     _topic(
         id="bail_basics",
@@ -158,6 +164,7 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
             "Has an arrest already happened, or are you asking about anticipatory bail "
             "before a possible arrest?"
         ),
+        kind="education",
     ),
     _topic(
         id="return_of_property",
@@ -245,6 +252,120 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
             "Document the government or private action you challenge. Consult a constitutional "
             "or civil rights advocate for writ remedies or defences in ongoing cases."
         ),
+        clarifying_question=(
+            "Are you learning how fundamental rights work in general, or describing a "
+            "specific restriction you want to challenge?"
+        ),
+        kind="education",
+    ),
+    _topic(
+        id="constitution_overview",
+        title="Constitution of India (overview)",
+        keywords=(
+            "indian constitution",
+            "constitution of india",
+            "the constitution",
+            "constitutional law",
+            "preamble",
+            "basic structure",
+            "directive principles",
+            "fundamental duties",
+        ),
+        summary=(
+            "The Constitution of India is the supreme law. It sets out the structure of "
+            "the Union and the States, the powers of Parliament, State legislatures, and "
+            "courts, and Part III fundamental rights. Other parts include directive "
+            "principles and fundamental duties. Ordinary statutes must be consistent with it."
+        ),
+        details=(
+            "This is a learning overview, not a commentary on any article. Which provision "
+            "matters depends on the question (rights, federal structure, elections, or "
+            "amendment). Official text is on India Code and the Legislative Department."
+        ),
+        practical_steps=(
+            "Name the topic you want (rights, courts, federalism, or amendment). Read the "
+            "relevant Part on an official source, then ask a constitutional lawyer if you "
+            "need advice about your own facts."
+        ),
+        clarifying_question=(
+            "Do you want a general overview of the Constitution, or help with a specific "
+            "right or court case?"
+        ),
+        kind="education",
+    ),
+    _topic(
+        id="civil_vs_criminal",
+        title="Civil law and criminal law (overview)",
+        keywords=(
+            "civil law",
+            "criminal law",
+            "civil case",
+            "criminal case",
+            "civil vs criminal",
+            "civil versus criminal",
+            "difference between civil",
+            "tort",
+            "plaint",
+        ),
+        summary=(
+            "Criminal law deals with offences investigated by the State (police and "
+            "prosecution) and can lead to punishment. Civil law deals with private disputes "
+            "such as contracts, property, and many money claims, usually started by a "
+            "plaint or petition, and typically ends in remedies such as damages or "
+            "injunctions rather than a criminal sentence."
+        ),
+        details=(
+            "The same facts can sometimes support both a criminal complaint and a civil "
+            "suit. Procedure, burden of proof, and forums differ. This note does not "
+            "classify your facts as one or the other."
+        ),
+        practical_steps=(
+            "If you are studying, compare who starts the case (State vs private person) "
+            "and the remedy sought. If you have a dispute, describe the outcome you want "
+            "(punishment, money, or possession) so an advocate can choose the forum."
+        ),
+        clarifying_question=(
+            "Are you asking how civil and criminal cases differ in general, or which "
+            "route fits a situation you are facing?"
+        ),
+        kind="education",
+    ),
+    _topic(
+        id="indian_courts",
+        title="Courts in India (overview)",
+        keywords=(
+            "supreme court",
+            "high court",
+            "district court",
+            "civil court",
+            "criminal court",
+            "tribunal",
+            "which court",
+            "court hierarchy",
+            "hierarchy of courts",
+        ),
+        summary=(
+            "India has a hierarchy: the Supreme Court at the top, High Courts for each "
+            "State or group of States, and district and subordinate courts (civil judges "
+            "and magistrates) for most first-instance cases. Some disputes go to tribunals "
+            "created by statute (for example consumer or tax forums)."
+        ),
+        details=(
+            "Which court can hear a case depends on subject matter, territory, and the "
+            "value or seriousness of the dispute. Appeals generally move up the hierarchy, "
+            "subject to limitation and leave requirements. This overview does not assign "
+            "your matter to a court."
+        ),
+        practical_steps=(
+            "Note the State, the kind of dispute, and any notice you already received. "
+            "The cause title on a court paper usually names the forum. Confirm filing "
+            "rules with a local advocate or the court website."
+        ),
+        clarifying_question=(
+            "Are you asking how Indian courts are organised, or which forum a particular "
+            "dispute should use?"
+        ),
+        kind="education",
     ),
     _topic(
         id="domestic_violence_safety",

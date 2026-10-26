@@ -75,6 +75,43 @@ def test_unknown_question_does_not_fabricate():
     assert "will not guess" in reply.lower()
 
 
+def test_educational_questions_answer_without_incident_prompts():
+    cases = {
+        "What is the Indian Constitution?": "constitution_overview",
+        "What are Fundamental Rights under the Constitution?": "fundamental_rights_overview",
+        "What is the difference between civil and criminal law?": "civil_vs_criminal",
+        "What is an FIR in India?": "fir_and_complaint",
+        "How are High Courts and the Supreme Court organised?": "indian_courts",
+    }
+    for text, topic_id in cases.items():
+        result = resolve_legal_question(text)
+        assert result.status == "matched", (text, result.status, result.topic_id)
+        assert result.topic_id == topic_id, (text, result.topic_id)
+        lowered = result.text.lower()
+        assert "what happened, where" not in lowered
+        assert "specific incident" not in lowered
+
+
+def test_personal_situation_can_still_ask_for_detail():
+    result = resolve_legal_question("My landlord will not return my deposit")
+    assert result.status in {"matched", "clarify"}
+    assert result.topic_id == "return_of_property"
+
+
+def test_followup_uses_history_but_new_lesson_does_not():
+    follow = resolve_legal_question(
+        "what documents for that",
+        recent_user_messages=["How do I file an FIR after a theft?"],
+    )
+    assert follow.topic_id == "fir_and_complaint"
+    fresh = resolve_legal_question(
+        "What is bail in Indian criminal procedure?",
+        recent_user_messages=["My landlord will not return my deposit"],
+    )
+    assert fresh.status == "matched"
+    assert fresh.topic_id == "bail_basics"
+
+
 def test_ambiguous_or_thin_detail_asks_clarifying_question():
     # Mid-strength cue without enough detail should clarify rather than invent.
     result = resolve_legal_question("accident insurance")
