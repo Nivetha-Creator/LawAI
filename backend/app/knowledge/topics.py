@@ -174,8 +174,14 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
             "return my property",
             "refuse to return",
             "deposit",
+            "security deposit",
             "landlord",
             "tenant",
+            "rental contract",
+            "rent agreement",
+            "lease",
+            "increase rent",
+            "rental",
             "borrowed",
             "cheque bounce",
             "money back",
@@ -184,18 +190,24 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
             "When someone withholds your movable property or money, available routes "
             "often depend on how you parted with it (loan, deposit, sale, tenancy, "
             "employment, fraud allegation). Civil recovery, police complaint, or "
-            "special tribunals may each be relevant for different fact patterns."
+            "special tribunals may each be relevant for different fact patterns. "
+            "Written rental contracts and security deposits are a common tenancy example."
         ),
         details=(
-            "A polite written demand with proof (messages, receipts, photos) is a "
-            "common first step. Wrongful retention may support a civil suit for recovery "
+            "A polite written demand with proof (messages, receipts, photos, the signed "
+            "rent agreement) is a common first step. For a landlord–tenant dispute, people "
+            "often rely on the written contract, rent receipts, and notices about deposit "
+            "or rent changes. Wrongful retention may support a civil suit for recovery "
             "or, if dishonesty is alleged with supporting facts, criminal avenues—"
-            "which offence (if any) applies must be assessed by a lawyer from your documents."
+            "which offence (if any) applies must be assessed by a lawyer from your documents. "
+            "Outcomes depend on the contract terms, state rent or tenancy law, and evidence; "
+            "this tool cannot decide a particular case."
         ),
         practical_steps=(
-            "Gather proof of ownership and communications. Send a dated written demand. "
-            "If the amount or value is significant, consult an advocate about civil "
-            "recovery and whether a police complaint is appropriate."
+            "Gather proof of ownership, the rental contract, and communications. Send a dated "
+            "written demand. If the amount or value is significant, consult an advocate about "
+            "civil recovery, tenancy forums where they exist, and whether a police complaint "
+            "is appropriate."
         ),
     ),
     _topic(
@@ -203,26 +215,55 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
         title="Consumer disputes and defective services",
         keywords=(
             "consumer",
+            "consumer protection",
             "defective product",
+            "defective goods",
+            "defective",
             "refund",
             "warranty",
+            "guarantee",
             "consumer court",
+            "consumer commission",
             "e commerce",
             "online purchase",
+            "seller",
+            "replacement",
+            "refuses replacement",
+            "replace",
+            "phone",
+            "mobile",
+            "stopped working",
+            "not working",
+            "manufacturer",
+            "deficient service",
         ),
         summary=(
             "The Consumer Protection Act framework provides remedies for defective "
             "goods, deficient services, and unfair trade practices through consumer "
-            "commissions at district, state, and national levels, depending on claim value."
+            "commissions at district, state, and national levels, depending on claim value. "
+            "Typical asks are repair, replacement, or refund when a product fails soon "
+            "after purchase and the seller will not resolve it."
         ),
         details=(
-            "You typically need proof of purchase, defect or deficiency, and correspondence "
-            "with the seller. Limitation periods apply to filing complaints."
+            "Useful first steps are usually: keep the invoice, warranty card, and photos "
+            "or a service report; send a dated written complaint to the seller (and the "
+            "manufacturer or platform if it was an online sale); and ask clearly for "
+            "repair, replacement, or refund. If there is no satisfactory response, options "
+            "often include the National Consumer Helpline and a complaint before the "
+            "consumer commission that fits the claim value. Limitation periods apply. "
+            "Whether an early failure is treated as a manufacturing defect, a warranty "
+            "issue, or something else depends on proof, the terms of sale, and how the "
+            "goods were used—this tool cannot invent a statute section or guarantee an "
+            "outcome."
         ),
         practical_steps=(
-            "Raise a written grievance with the seller and keep responses. File a complaint "
-            "on the National Consumer Helpline or approach the appropriate consumer commission "
-            "with an advocate if the value is high."
+            "Write to the seller with proof of purchase and the defect, and keep the reply. "
+            "If the seller refuses, use the National Consumer Helpline or approach the "
+            "appropriate consumer commission. Consult an advocate if the value is high or "
+            "the facts are disputed."
+        ),
+        clarifying_question=(
+            "Do you still have the invoice or warranty, and did you buy in a shop or online?"
         ),
     ),
     _topic(
@@ -230,6 +271,16 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
         title="Constitutional rights (overview)",
         keywords=(
             "fundamental rights",
+            "six fundamental rights",
+            "fundamental rights under",
+            "list of fundamental rights",
+            "part iii",
+            "right to equality",
+            "right to freedom",
+            "right against exploitation",
+            "freedom of religion",
+            "cultural and educational rights",
+            "constitutional remedies",
             "constitution",
             "article 21",
             "equality",
@@ -238,15 +289,28 @@ LEGAL_TOPICS: tuple[LegalTopic, ...] = (
             "habeas",
         ),
         summary=(
-            "Part III of the Constitution of India guarantees fundamental rights such as "
-            "equality before law, freedom of speech and expression (with reasonable restrictions), "
-            "protection of life and personal liberty, and remedies through courts including "
-            "constitutional writs in appropriate cases."
+            "Part III of the Constitution of India currently guarantees six Fundamental Rights: "
+            "(1) Right to Equality; (2) Right to Freedom; (3) Right against Exploitation; "
+            "(4) Right to Freedom of Religion; (5) Cultural and Educational Rights; and "
+            "(6) Right to Constitutional Remedies. They bind the State, subject to the "
+            "grounds of restriction the Constitution itself allows."
         ),
         details=(
-            "Enforcement usually requires approaching High Courts or the Supreme Court, or "
-            "raising rights within criminal or civil proceedings. Specific articles and remedies "
-            "depend on the violation alleged."
+            "The six groups, in outline, are: Right to Equality (including equality before "
+            "law and prohibitions related to discrimination, and associated equality "
+            "guarantees); Right to Freedom (including speech and expression, assembly, "
+            "association, movement, residence, and occupation, with reasonable restrictions, "
+            "and related personal-liberty protections such as those commonly discussed with "
+            "life and personal liberty); Right against Exploitation (including prohibitions "
+            "on trafficking and forced labour, and on certain employment of children); "
+            "Right to Freedom of Religion (conscience and practice, subject to public order, "
+            "morality, and health); Cultural and Educational Rights of minorities to conserve "
+            "culture and to establish and administer educational institutions; and Right to "
+            "Constitutional Remedies to move the Supreme Court for enforcement of Fundamental "
+            "Rights. The former Fundamental Right to property is not in this Part III list; "
+            "property is treated separately as a constitutional legal right. Enforcement "
+            "usually means High Courts or the Supreme Court, or raising rights inside other "
+            "proceedings. Which article fits a dispute is fact-specific."
         ),
         practical_steps=(
             "Document the government or private action you challenge. Consult a constitutional "

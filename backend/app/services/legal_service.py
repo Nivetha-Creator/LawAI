@@ -64,6 +64,12 @@ WEAK_SOLO_KEYWORDS = frozenset(
         "advocate",
         "arrest",
         "custody",
+        "phone",
+        "mobile",
+        "seller",
+        "replacement",
+        "product",
+        "rental",
     }
 )
 
@@ -86,6 +92,12 @@ _EDUCATIONAL = (
     "how does",
     "how are",
     "how do ",
+    "list all",
+    "list the",
+    "list of",
+    "enumerate",
+    "name the",
+    "name all",
 )
 _PERSONAL = re.compile(
     r"\b(my|mine|i was|i am|i have|happened to me|against me|help me|"
@@ -261,6 +273,26 @@ def _is_followup_fragment(text: str) -> bool:
     )
 
 
+def _has_actionable_facts(text: str) -> bool:
+    """True when the message already describes a situation worth a general answer."""
+    tokens = _tokenize(text)
+    if len(tokens) >= 6:
+        return True
+    return looks_personal(text) and len(tokens) >= 4
+
+
+def _should_merge_history(original: str, recent_user_messages: list[str] | None) -> bool:
+    """Merge prior turns only for genuine follow-ups, never for a new standalone topic."""
+    if not recent_user_messages:
+        return False
+    if looks_educational(original) and not looks_personal(original):
+        return False
+    standalone = match_topics(original, limit=1)
+    if standalone and standalone[0][1] >= CLARIFY_MIN_SCORE:
+        return False
+    return _is_followup_fragment(original)
+
+
 def _answer_from_topic(topic: LegalTopic, matches: list[tuple[LegalTopic, float]]) -> str:
     body = _format_topic_answer(topic)
     if topic.get("kind") == "education":
@@ -295,12 +327,8 @@ def resolve_legal_question(
     """
     original = (message or "").strip()
     educational = looks_educational(original) and not looks_personal(original)
-    merge_history = bool(recent_user_messages) and (
-        _is_followup_fragment(original)
-        or (looks_personal(original) and not looks_educational(original))
-    )
     combined = original
-    if merge_history and recent_user_messages:
+    if _should_merge_history(original, recent_user_messages):
         prior = " ".join(recent_user_messages[-2:])
         combined = f"{prior} {combined}"
 
@@ -346,6 +374,21 @@ def resolve_legal_question(
         return LegalAnswer("clarify", text, topic_id=primary["id"], score=score)
 
     if score >= MATCH_MIN_SCORE:
+        return LegalAnswer(
+            "matched",
+            _answer_from_topic(primary, matches),
+            topic_id=primary["id"],
+            score=score,
+        )
+
+    # One clear topic plus a described situation: give the curated general
+    # guidance first. Clarify only when the message is thin or two topics tie.
+    if (
+        not educational
+        and score >= CLARIFY_MIN_SCORE
+        and (score - second_score) >= 0.75
+        and _has_actionable_facts(original)
+    ):
         return LegalAnswer(
             "matched",
             _answer_from_topic(primary, matches),

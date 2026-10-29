@@ -61,6 +61,86 @@ def test_road_accident_chat_local(client):
     assert "accident" in body["reply"].lower()
 
 
+def test_chat_switches_topic_inside_one_conversation(client):
+    first = client.post(
+        "/chat",
+        json={"message": "What are the six Fundamental Rights in India?"},
+    )
+    assert first.status_code == 200
+    conv_id = first.json()["conversation_id"]
+    assert "right to equality" in first.json()["reply"].lower()
+
+    phone = client.post(
+        "/chat",
+        json={
+            "message": (
+                "My phone stopped working after three days and the seller "
+                "refuses replacement"
+            ),
+            "conversation_id": conv_id,
+        },
+    )
+    assert phone.status_code == 200
+    reply = phone.json()["reply"].lower()
+    assert "consumer" in reply
+    assert "fundamental rights" not in reply
+    assert "what happened, where" not in reply
+
+    follow = client.post(
+        "/chat",
+        json={
+            "message": "what about limitation period",
+            "conversation_id": conv_id,
+        },
+    )
+    assert "limitation" in follow.json()["reply"].lower()
+    assert "consumer" in follow.json()["reply"].lower()
+
+
+def test_debate_multi_turn_then_end(client):
+    start = client.post(
+        "/debate",
+        json={
+            "message": (
+                "Death penalty should be abolished because it is irreversible."
+            ),
+            "side": "prosecution",
+            "topic": "Abolition of the death penalty",
+        },
+    )
+    assert start.status_code == 200
+    conv_id = start.json()["conversation_id"]
+    assert "Defence" in start.json()["reply"]
+    assert "irreversib" in start.json()["reply"].lower() or "appeal" in start.json()["reply"].lower()
+    assert start.json()["reply"].split("**Follow-up:**", 1)[0].count("?") == 0
+
+    second = client.post(
+        "/debate",
+        json={
+            "message": "Poorer accused get worse counsel so the penalty is unequal.",
+            "side": "prosecution",
+            "topic": "Abolition of the death penalty",
+            "conversation_id": conv_id,
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["reply"] != start.json()["reply"]
+
+    end = client.post(
+        "/debate",
+        json={
+            "message": "",
+            "side": "prosecution",
+            "conversation_id": conv_id,
+            "end_debate": True,
+        },
+    )
+    assert end.status_code == 200
+    assert end.json()["ended"] is True
+    assert "DEBATE REVIEW" in end.json()["reply"]
+    assert "rule-based" in end.json()["reply"].lower()
+
+
 def test_unsupported_legal_chat(client):
     chat = client.post(
         "/chat",

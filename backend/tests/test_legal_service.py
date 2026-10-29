@@ -112,6 +112,89 @@ def test_followup_uses_history_but_new_lesson_does_not():
     assert fresh.topic_id == "bail_basics"
 
 
+def _six_rights_mentioned(text: str) -> None:
+    lowered = text.lower()
+    assert "right to equality" in lowered
+    assert "right to freedom" in lowered
+    assert "right against exploitation" in lowered
+    assert "freedom of religion" in lowered
+    assert "cultural and educational" in lowered
+    assert "constitutional remedies" in lowered
+
+
+def test_fundamental_rights_lists_all_six():
+    for question in (
+        "What are the six Fundamental Rights in India?",
+        "List all six Fundamental Rights under the Constitution of India",
+        "What are Fundamental Rights under the Constitution?",
+    ):
+        result = resolve_legal_question(question)
+        assert result.status == "matched", question
+        assert result.topic_id == "fundamental_rights_overview", (question, result.topic_id)
+        _six_rights_mentioned(result.text)
+        assert "what happened, where" not in result.text.lower()
+
+
+def test_new_consumer_question_does_not_keep_fundamental_rights_context():
+    rights = resolve_legal_question("What are the six Fundamental Rights in India?")
+    assert rights.topic_id == "fundamental_rights_overview"
+
+    phone = resolve_legal_question(
+        "My phone stopped working after three days and the seller refuses replacement",
+        recent_user_messages=["What are the six Fundamental Rights in India?"],
+    )
+    assert phone.status == "matched"
+    assert phone.topic_id == "consumer_grievance"
+    assert "fundamental rights" not in phone.text.lower()
+    assert "consumer" in phone.text.lower()
+    assert "what happened, where" not in phone.text.lower()
+
+
+def test_phone_then_rental_switches_topic():
+    phone = resolve_legal_question(
+        "My phone stopped working after three days and the seller refuses replacement"
+    )
+    assert phone.status == "matched"
+    assert phone.topic_id == "consumer_grievance"
+    lowered = phone.text.lower()
+    assert "replacement" in lowered or "refund" in lowered
+    assert "consumer commission" in lowered or "consumer protection" in lowered
+
+    rental = resolve_legal_question(
+        "My landlord is ignoring the rental contract and refusing to return my deposit",
+        recent_user_messages=[
+            "My phone stopped working after three days and the seller refuses replacement"
+        ],
+    )
+    assert rental.status == "matched"
+    assert rental.topic_id == "return_of_property"
+    assert "consumer protection" not in rental.text.lower()
+    assert "deposit" in rental.text.lower() or "tenan" in rental.text.lower()
+
+
+def test_genuine_followup_keeps_consumer_context():
+    follow = resolve_legal_question(
+        "what about limitation period",
+        recent_user_messages=[
+            "My phone stopped working after three days and the seller refuses replacement"
+        ],
+    )
+    assert follow.topic_id == "consumer_grievance"
+    assert "limitation" in follow.text.lower()
+
+
+def test_new_topic_does_not_keep_irrelevant_history():
+    result = resolve_legal_question(
+        "What is an FIR in India?",
+        recent_user_messages=[
+            "My phone stopped working after three days and the seller refuses replacement"
+        ],
+    )
+    assert result.status == "matched"
+    assert result.topic_id == "fir_and_complaint"
+    assert "consumer" not in result.text.lower()
+
+
 def test_ambiguous_or_thin_detail_asks_clarifying_question():
     # Mid-strength cue without enough detail should clarify rather than invent.
     result = resolve_legal_question("accident insurance")
